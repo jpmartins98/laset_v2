@@ -28,6 +28,9 @@
  /* Configure RCC clock at 72 MHz */
 static void prvSetupRCC( void );
 
+/* Configure RCC clock at 72 MHz */
+static void prvSetupRCCHSI( void );  	//60hz
+
  /* Configure GPIO. */
 static void prvSetupGPIO( void );
 
@@ -52,7 +55,8 @@ TaskHandle_t HandleTask1;
 int main( void )
 {
 	/*Setup the hardware, RCC, GPIO, etc...*/
-    prvSetupRCC();
+    //prvSetupRCC();
+    prvSetupRCCHSI();
     prvSetupGPIO();
 
 	/* Create the tasks */
@@ -127,6 +131,26 @@ static void prvSetupRCC( void )
 }
 /*-----------------------------------------------------------*/
 
+
+
+static void prvSetupRCCHSI( void )
+{
+	RCC_HCLKConfig(RCC_SYSCLK_Div1);
+	RCC_PCLK1Config(RCC_HCLK_Div2);
+	RCC_PCLK2Config(RCC_HCLK_Div1);
+
+	RCC_HSICmd(ENABLE);
+	FLASH_SetLatency(FLASH_Latency_2);
+
+
+
+	RCC_PLLConfig(RCC_PLLSource_HSI_Div2, RCC_PLLMul_16);
+	RCC_PLLCmd(ENABLE);
+	RCC_SYSCLKConfig(RCC_SYSCLKSource_PLLCLK);
+
+	while(RCC_GetSYSCLKSource() != 0x08);
+}
+/*-----------------------------------------------------------*/
 
 
 static void prvSetupGPIO( void )
