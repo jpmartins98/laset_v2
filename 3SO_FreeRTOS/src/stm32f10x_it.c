@@ -8,6 +8,8 @@
 
 #include "stm32f10x_it.h"
 
+extern TaskHandle_t HandleTask2;
+
 
 /*******************************************************************************
 * Function Name  : NMIException
@@ -445,6 +447,18 @@ void TIM1_CC_IRQHandler(void)
 *******************************************************************************/
 void TIM2_IRQHandler(void)
 {
+	static BaseType_t xYieldRequired;
+
+	xYieldRequired = xTaskResumeFromISR( HandleTask2 );
+	TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
+
+	if( xYieldRequired == pdTRUE )
+	{
+		// We should switch context so the ISR returns to a different task.
+		 // NOTE:  How this is done depends on the port you are using.  Check
+		 // the documentation and examples for your port.
+		taskYIELD();
+   }
 }
 
 /*******************************************************************************
