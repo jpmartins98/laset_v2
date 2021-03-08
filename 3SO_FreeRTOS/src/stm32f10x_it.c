@@ -8,7 +8,7 @@
 
 #include "stm32f10x_it.h"
 
-extern TaskHandle_t HandleTask2;
+extern TaskHandle_t HandleTask1, HandleTask2;
 
 
 /*******************************************************************************
@@ -447,12 +447,13 @@ void TIM1_CC_IRQHandler(void)
 *******************************************************************************/
 void TIM2_IRQHandler(void)
 {
-	static BaseType_t xYieldRequired;
+	static BaseType_t xYieldRequiredTask1, xYieldRequiredTask2;
 
-	xYieldRequired = xTaskResumeFromISR( HandleTask2 );
+	xYieldRequiredTask1 = xTaskResumeFromISR( HandleTask1 );
+	xYieldRequiredTask2 = xTaskResumeFromISR( HandleTask2 );
 	TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
 
-	if( xYieldRequired == pdTRUE )
+	if( xYieldRequiredTask2 == pdTRUE || xYieldRequiredTask1 == pdTRUE)
 	{
 		// We should switch context so the ISR returns to a different task.
 		 // NOTE:  How this is done depends on the port you are using.  Check

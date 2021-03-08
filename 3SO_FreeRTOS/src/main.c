@@ -1,17 +1,17 @@
 /**
   ******************************************************************************
   * @file    main.c
-  * @author  3S0 FreeRTOS nnd@isep.ipp.pt
-  * @version V1.1
-  * @date    28/11/2018
-  * @brief   SISTR/SOTER FreeRTOS Example project
+  * @author  1161513 João Martins
+  * @version V1.0
+  * @date    07/03/2021
+  * @brief   CTD Data Logger.
   ******************************************************************************
-*/
 
 
 /*
  *
- * LED blink
+ * CTD Logger
+ * 2020-2021
  *
  */
 
@@ -26,27 +26,37 @@
 #include "task.h"
 #include "queue.h"
 
+#define UART_BAUDRATE 115200
+
+#define I2C_SDA 10
+#define I2C_SCL 11
+#define I2C_CLOCKSPEED 800
+
+#define I2C_INIT 0
+#define I2C_REQUEST_READ 1
+#define I2C_RECEIVE_READ 2
+#define CONDUTIVITY_I2C_ADDRESS 0xC8
+
+
 struct stReceiveI2C {
    char  values[15];
 }stReceiveI2C;
 
- /* Configure RCC clock at 72 MHz */
-//static void prvSetupRCC( void );
 
-/* Configure RCC clock at 72 MHz */
-static void prvSetupRCCHSI( void );  	//60hz
+/* Configure RCC clock at 64 MHz */
+static void prvSetupRCCHSI( void );
 
  /* Configure GPIO. */
 static void prvSetupGPIO( void );
-
-/* Simple LED toggle task. */
-//static void prvFlashTask1( void *pvParameters );
 
 /* Simple I2C2 read task. */
 static void prvI2C2ReadTask( void *pvParameters );
 
 /* Simple ADC read task. */
 static void prvADCReadTask( void *pvParameters );
+
+/* Simple Logger task. */
+static void prvLoggerTask( void *pvParameters );
 
 
 /********** Useful functions **********/
@@ -87,15 +97,25 @@ void prvADCChannels(void);
 
 
 /* Task 1 handle variable. */
-TaskHandle_t HandleTask1, HandleTask2;
+TaskHandle_t HandleTask1, HandleTask2, HandleTask3;
+QueueHandle_t xQueue_Measurements;
 uint16_t u16Pressure[2];
+
 
 
 
 int main( void )
 {
+	/* Create Queues*/
+	xQueue_Measurements = xQueueCreate( 10, 20 );
+	if( xQueue_Measurements == 0 ){
+	        /* Queue was not created and must not be used. */
+	}
+	else{
+	        /* Queue created successfully. */
+	}
+
 	/*Setup the hardware, RCC, GPIO, etc...*/
-    //prvSetupRCC();
     prvSetupRCCHSI();
     prvSetupGPIO();
     prvSetupUSART2();
@@ -106,8 +126,9 @@ int main( void )
 
 
     /* Create the tasks */
-    //xTaskCreate( prvADCReadTask, "ADCRead", configMINIMAL_STACK_SIZE, NULL, 1, &HandleTask1 );
- 	xTaskCreate( prvI2C2ReadTask, "I2C2Read", configMINIMAL_STACK_SIZE*3, NULL, 1, &HandleTask2 );
+    xTaskCreate( prvADCReadTask, "ADCRead", configMINIMAL_STACK_SIZE, NULL, 2, &HandleTask1 );
+ 	xTaskCreate( prvI2C2ReadTask, "I2C2Read", configMINIMAL_STACK_SIZE*3, NULL, 2, &HandleTask2 );
+ 	xTaskCreate( prvLoggerTask, "LoggerRead", configMINIMAL_STACK_SIZE, NULL, 1, &HandleTask3 );
 
 
 	/* Start the scheduler. */
@@ -123,28 +144,30 @@ int main( void )
 static void prvI2C2ReadTask( void *pvParameters )
 {
 	struct stReceiveI2C stReceiveData;
-	uint8_t address= 0xC8;
-	int mode=0;
+	uint8_t address=CONDUTIVITY_I2C_ADDRESS;
+	int mode=I2C_INIT;
     for( ;; )
 	{
     	  switch ( mode )
     	  {
-    	  	case 0 :
-    	    mode=1;
+    	  	case I2C_INIT :
+    	    mode=I2C_REQUEST_READ;
     	    break;
 
-    	    case 1 :
+    	    case I2C_REQUEST_READ :
     	    prvSendMessageI2C2(address	,'R');
-    	    mode=2;
+    	    mode=I2C_RECEIVE_READ;
     	    break;
 
-    	    case 2 :
+    	    case I2C_RECEIVE_READ :
     	    stReceiveData=prvReceivesMessagesI2C2(address,11);
-    	    char buf[11];
-    	    sprintf(buf,"new read: ");
-    	    prvSendMessageUSART2(buf);
-    	    prvSendMessageUSART2(stReceiveData.values);
-    	    mode=1;
+    	    xQueueSendToBack(xQueue_Measurements, &stReceiveData.values,  ( TickType_t ) 0);
+//    	    char buf[11];
+//    	    sprintf(buf,"new read: ");
+//    	    xQueueSendToBack(xQueue_Measurements, buf,  ( TickType_t ) 10);
+//    	    prvSendMessageUSART2(buf);
+//    	    prvSendMessageUSART2(stReceiveData.values);
+    	    mode=I2C_REQUEST_READ;
     	    break;
 
     	  }
@@ -154,8 +177,6 @@ static void prvI2C2ReadTask( void *pvParameters )
 
 /*-----------------------------------------------------------*/
 
-
-
 static void prvADCReadTask( void *pvParameters )
 {
 
@@ -163,27 +184,25 @@ static void prvADCReadTask( void *pvParameters )
 	{
 
     	prvADCChannels();
+    	vTaskSuspend( NULL );
 
 	}
 }
+
 /*-----------------------------------------------------------*/
 
-//static void prvFlashTask1( void *pvParameters )
-//{
-//    for( ;; )
-//	{
-//
-//    	/* Block 1 second. */
-//    	vTaskDelay( ( TickType_t ) 1000 / portTICK_PERIOD_MS  );
-//
-//    	/* Toggle the LED */
-//    	GPIO_WriteBit(GPIOB, GPIO_Pin_0, ( 1-GPIO_ReadOutputDataBit( GPIOB, GPIO_Pin_0 ) ) );
-//
-//	}
-//}
-/*-----------------------------------------------------------*/
+static void prvLoggerTask( void *pvParameters )
+{
+	char received[20];
+    for( ;; )
+	{
 
-
+    	if( uxQueueMessagesWaiting(xQueue_Measurements) > 0){
+    		xQueueReceive(xQueue_Measurements, received, ( TickType_t ) portMAX_DELAY);
+    		prvSendMessageUSART2(received);
+    	}
+	}
+}
 
 /*-----------------------------------------------------------*/
 
@@ -258,7 +277,7 @@ GPIO_InitTypeDef GPIO_InitStructure;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
 
 
-    USART_InitStructure.USART_BaudRate = 115200;
+    USART_InitStructure.USART_BaudRate = UART_BAUDRATE;
     USART_InitStructure.USART_WordLength = USART_WordLength_8b;
     USART_InitStructure.USART_StopBits = USART_StopBits_1;
     USART_InitStructure.USART_Parity = USART_Parity_No;
@@ -300,7 +319,7 @@ GPIO_InitTypeDef GPIO_InitStructure;
 
     /* Initialize I2C */
     I2C_DeInit(I2C2);
-    I2C_InitStructure.I2C_ClockSpeed = 800;
+    I2C_InitStructure.I2C_ClockSpeed = I2C_CLOCKSPEED;
     I2C_InitStructure.I2C_Mode = I2C_Mode_I2C;
     I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_2;
     I2C_InitStructure.I2C_OwnAddress1 = 1;
@@ -427,7 +446,6 @@ uint16_t cont_aux=0;
 /*-----------------------------------------------------------*/
 
 void  prvSendMessageI2C2(uint8_t int8AddressI2C, uint8_t byte){
-	int counter = 0;
 	I2C_AcknowledgeConfig(I2C2, ENABLE);
 	//while(I2C_GetFlagStatus(I2C2, I2C_FLAG_BUSY));
 	//vTaskDelay( ( TickType_t ) 600 / portTICK_PERIOD_MS  );
@@ -445,7 +463,7 @@ void  prvSendMessageI2C2(uint8_t int8AddressI2C, uint8_t byte){
 
 struct stReceiveI2C prvReceivesMessagesI2C2(uint8_t int8AddressI2C, uint8_t int8Iterations){
 	struct stReceiveI2C stReceiveData;
-	int i;
+	int i = 0	;
 	if (int8Iterations <= 15){
 		I2C_GenerateSTART(I2C2,ENABLE);
 		while(!(I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_MODE_SELECT)) );
@@ -454,7 +472,6 @@ struct stReceiveI2C prvReceivesMessagesI2C2(uint8_t int8AddressI2C, uint8_t int8
 		//while (!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_BYTE_RECEIVED));
 		//char val = I2C_ReceiveData(I2C2);
 		for ( i=0; i<=int8Iterations; i++){
-			//vTaskDelay( ( TickType_t ) 300 / portTICK_PERIOD_MS  );
 			while(!I2C_CheckEvent(I2C2, I2C_EVENT_MASTER_BYTE_RECEIVED));
 			stReceiveData.values[i]=I2C_ReceiveData(I2C2);
 		}
@@ -478,6 +495,7 @@ void prvADCChannels(void){
 		//while(ADC_GetFlagStatus(ADC_FLAG_STRT) == RESET);
 		//ADC_ClearFlag(ADC_FLAG_STRT);
 		sprintf(buf, "x-> %d mg, y-> %d mg \r\n",u16Pressure[0],u16Pressure[1]);
+		 //xQueueSendToBack(xQueue_Measurements, &u16Pressure[0],  ( TickType_t ) 0);
 		prvSendMessageUSART2(buf);
 }
 
