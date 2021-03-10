@@ -136,7 +136,7 @@ int main( void )
     prvSetupRTC();
     prvSetupRTCAlarmNVIC();
     prvSetupTIM2();
-//    prvSetupTIM3();
+    prvSetupTIM3();
 
     /* Gets the counter value */
     u32 RTCCounterValue = RTC_GetCounter()+16;
@@ -529,7 +529,7 @@ static void prvSetupTIM3(void)
 	TIMER_InitStructure.TIM_CounterMode = TIM_CounterMode_Up;
 	TIMER_InitStructure.TIM_Prescaler = 65536;
 	TIMER_InitStructure.TIM_Period = 58593;
-	TIM_TimeBaseInit(TIM2, &TIMER_InitStructure);
+	TIM_TimeBaseInit(TIM3, &TIMER_InitStructure);
 
 	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
