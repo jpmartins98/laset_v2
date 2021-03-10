@@ -72,8 +72,18 @@ static void prvSetupDMA( void );
 /* ADC configuration. */
 static void prvSetupADC( void );
 
-/* ADC configuration. */
+/* TIMERs configuration. */
 static void prvSetupTIM2(void);
+static void prvSetupTIM3(void);
+
+/* RTCAlarm Interrupt configuration. */
+static void prvSetupRTCAlarmNVIC(void);
+
+/* EXTI configuration. */
+static void prvSetupEXTI(void);
+
+/* RTC configuration. */
+static void prvSetupRTC(void);
 
 /* USART2 send message. */
 static void prvSendMessageUSART2(char *message);
@@ -122,12 +132,21 @@ int main( void )
     prvSetupI2C2();
     prvSetupDMA();
     prvSetupADC();
+    prvSetupEXTI();
+    prvSetupRTC();
+    prvSetupRTCAlarmNVIC();
     prvSetupTIM2();
+//    prvSetupTIM3();
+
+    /* Gets the counter value */
+    u32 RTCCounterValue = RTC_GetCounter()+16;
+    /* Sets the alarm value */
+    RTC_SetAlarm(RTCCounterValue);
 
 
     /* Create the tasks */
     xTaskCreate( prvADCReadTask, "ADCRead", configMINIMAL_STACK_SIZE, NULL, 2, &HandleTask1 );
- 	xTaskCreate( prvI2C2ReadTask, "I2C2Read", configMINIMAL_STACK_SIZE*3, NULL, 2, &HandleTask2 );
+ 	xTaskCreate( prvI2C2ReadTask, "I2C2Read", configMINIMAL_STACK_SIZE*3, NULL, 2, &HandleTask2);
  	xTaskCreate( prvLoggerTask, "LoggerRead", configMINIMAL_STACK_SIZE, NULL, 1, &HandleTask3 );
 
 
@@ -398,6 +417,79 @@ static void prvSetupADC( void )
 
 /*-----------------------------------------------------------*/
 
+static void prvSetupRTCAlarmNVIC(void)
+ {
+  NVIC_InitTypeDef NVIC_InitStructure;
+
+  /* 2 bits for Preemption Priority and 2 bits for Sub Priority */
+  NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
+
+  NVIC_InitStructure.NVIC_IRQChannel = RTCAlarm_IRQn;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
+}
+
+/*-----------------------------------------------------------*/
+
+static void prvSetupEXTI(void)
+{
+  EXTI_InitTypeDef EXTI_InitStructure;
+
+  /* Configure EXTI Line17(RTC Alarm) to generate an interrupt on rising edge */
+  EXTI_ClearITPendingBit(EXTI_Line17);
+  EXTI_InitStructure.EXTI_Line = EXTI_Line17;
+  EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+  EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
+  EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+  EXTI_Init(&EXTI_InitStructure);
+}
+
+/*-----------------------------------------------------------*/
+
+static void prvSetupRTC(void)
+{
+  /* Enable PWR and BKP clock */
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_PWR | RCC_APB1Periph_BKP, ENABLE);
+
+  /* RTC clock source configuration ------------------------------------------*/
+  /* Allow access to BKP Domain */
+  PWR_BackupAccessCmd(ENABLE);
+
+  /* Reset Backup Domain */
+  BKP_DeInit();
+
+  /* Enable the LSE OSC */
+  RCC_LSEConfig(RCC_LSE_ON);
+  /* Wait till LSE is ready */
+  while(RCC_GetFlagStatus(RCC_FLAG_LSERDY) == RESET)
+  {
+  }
+
+  /* Select the RTC Clock Source */
+   RCC_RTCCLKConfig(RCC_RTCCLKSource_LSE);
+
+  /* Enable the RTC Clock */
+  RCC_RTCCLKCmd(ENABLE);
+
+  /* RTC configuration -------------------------------------------------------*/
+  /* Wait for RTC APB registers synchronisation */
+  RTC_WaitForSynchro();
+
+  /* Set the RTC time base to 1s */
+  RTC_SetPrescaler(32767);
+  /* Wait until last write operation on RTC registers has finished */
+  RTC_WaitForLastTask();
+
+  /* Enable the RTC Alarm interrupt */
+   RTC_ITConfig(RTC_IT_ALR, ENABLE);
+  /* Wait until last write operation on RTC registers has finished */
+   RTC_WaitForLastTask();
+}
+
+/*-----------------------------------------------------------*/
+
 static void prvSetupTIM2(void)
 {
 	TIM_TimeBaseInitTypeDef TIMER_InitStructure;
@@ -421,6 +513,29 @@ static void prvSetupTIM2(void)
 
     TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
     TIM_Cmd(TIM2, ENABLE);
+
+}
+
+/*-----------------------------------------------------------*/
+
+static void prvSetupTIM3(void)
+{
+	TIM_TimeBaseInitTypeDef TIMER_InitStructure;
+	NVIC_InitTypeDef  NVIC_InitStructure;
+
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
+	TIM_TimeBaseStructInit(&TIMER_InitStructure);
+
+	TIMER_InitStructure.TIM_CounterMode = TIM_CounterMode_Up;
+	TIMER_InitStructure.TIM_Prescaler = 65536;
+	TIMER_InitStructure.TIM_Period = 58593;
+	TIM_TimeBaseInit(TIM2, &TIMER_InitStructure);
+
+	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
 
 }
 

@@ -471,6 +471,39 @@ void TIM2_IRQHandler(void)
 *******************************************************************************/
 void TIM3_IRQHandler(void)
 {
+	char buff[20];
+
+
+	TIM_ITConfig(TIM3, TIM_IT_Update, DISABLE);
+	TIM_Cmd(TIM3, DISABLE);
+
+
+	uint16_t cont_aux=0;
+	/* Gets the counter value */
+	u32 RTCCounterValue;
+	RTCCounterValue = RTC_GetCounter()+16;
+	RTC_WaitForLastTask();
+
+	sprintf(buff,"New alarm count %d !!", RTCCounterValue);
+
+
+	/* Wait until last write operation on RTC registers is terminated */
+	RTC_WaitForLastTask();
+	/* Sets Alarm value to 0xFFFFFFFA */
+	RTC_SetAlarm(RTCCounterValue);
+	/* Wait until last write operation on RTC registers is terminated */
+	RTC_WaitForLastTask();
+
+	while(cont_aux != strlen(buff))
+	{
+		USART_SendData(USART2, (uint8_t) buff[cont_aux]);
+		while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET)
+	   {
+		}
+		cont_aux++;
+	}
+
+	TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
 }
 
 /*******************************************************************************
@@ -603,6 +636,26 @@ void EXTI15_10_IRQHandler(void)
 *******************************************************************************/
 void RTCAlarm_IRQHandler(void)
 {
+	char buff[20];
+
+	TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);
+	TIM_Cmd(TIM3, ENABLE);
+
+	RTC_ClearITPendingBit(RTC_IT_ALR);
+	EXTI_ClearITPendingBit(EXTI_Line17);
+
+	sprintf(buff,"New tim3 !!");
+
+	uint16_t cont_aux=0;
+
+	 while(cont_aux != strlen(buff))
+	 {
+		 USART_SendData(USART2, (uint8_t) buff[cont_aux]);
+		 while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET)
+		 {
+		 }
+		 cont_aux++;
+	 }
 }
 
 /*******************************************************************************
